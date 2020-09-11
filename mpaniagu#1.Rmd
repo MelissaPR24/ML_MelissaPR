@@ -1,0 +1,155 @@
+---
+title: "Homework 1"
+author: "Melissa Paniagua"
+date: "9/11/2020"
+output: html_document
+---
+
+This assignment will concentrate on using R and Git.
+
+Let's use data from a finantial entity utilized to perform strategies in a marketing campaing. This dataset has been retrieved from Kaggle.com, and has 17 columns and 11,162 rows.
+
+## Getting data in R
+
+```{r}
+
+#Load the library package
+library()
+
+#Load the dataset as a csv file
+df<- read.csv("/Users/melissa/Documents/Kent State/Fall 2020/Fund. Machine Learning/datasets-4471-6849-bank.csv")
+
+#Select the first five rows and 10 columns of the dataframe
+small.df = df [c(1:5),c(1:10)]
+
+#Summary of the small data frame
+print (small.df)
+
+#See the data frame structure
+str(df)
+```
+
+
+## Descriptive Statistics
+
+### 1 Quantitative variables ###
+
+**1.1 Customers' age**
+
+```{r}
+#Identify type of object
+class(df$age)
+#Statistics summary
+summary(df$age)
+#Draw a histogram to analyze the customers' age pattern
+hist(df$age, 
+     main="Histogram for Ages", 
+     xlab="Age", 
+     border="darkblue", 
+     col="lightblue",
+     xlim=c(15,95),
+     ylab="Frequency of Ages",
+     las=1, 
+     breaks=20)
+```
+
+Here, we can identify that most customers are between 25 and 60 years old. This histogram has a right tail, which means a few customers are elderly people, but the majority are young.
+
+**1.2 Customers' balance**
+
+```{r}
+#Identify type of object
+class(df$balance)
+#Statistics summary
+summary(df$balance)
+#Draw a histogram to analyze the customers' balance pattern.
+hist(df$balance, 
+     main="Histogram of Individual's Balance", 
+     xlab="Balance", 
+     border="darkgreen", 
+     col="lightgreen",
+     xlim=c(-7000,82000),
+     ylab="Frequency of Balances",
+     las=1, 
+     breaks=10)
+```
+
+Here, we can identify that most customers balance is between 0 to 1000. This histogram has a right tail, which means that a few customers how has a great balance around 8000, but those are outliers. Something to take into consideration is that there are a considerable number of customers with negative balance.
+
+### 2 Categorical variables
+
+**2.1 Customers' marital status**
+```{r}
+#Identify type of object
+class(df$marital)
+#Summary of marital status
+table(df$marital)
+#Pie chart of marital status
+pie(table(df$marital), main= "Pie Chart of Marital Status")
+
+```
+
+More than 50% of the customers are married.
+
+**2.2 Customers' education**
+```{r}
+#Identify type of object
+class(df$education)
+#Summary of education
+table(df$education)
+#Bar chart of education
+barplot(table(df$education),
+        main= "Bar Chart of education",
+        col= c("darkblue"))
+```
+
+The graph show above, confirms that % customers have 
+
+## Variable Transformation
+```{r}
+#Current data type
+class(df$education)
+#Data type transformation from factor to character. Show only the first 6 rows.
+head(as.character(df$job))
+#Current data type
+class(as.character(df$job))
+```
+
+
+## Visualizations
+
+### Plot
+```{r}
+# Housing vs Education"
+counts <- table(df$housing, df$education)
+barplot(counts, main="Housing vs Education",
+        xlab="Education", 
+        col=c("darkred","green"),
+        legend = rownames(counts), beside=TRUE)
+```
+
+Here, the bank could identify that most of its customer have secondary and tertiary education.
+
+### Scatterplot
+```{r}
+#Function to generate a continuous color palette
+mycolor <- colorRampPalette(c('red','green'))
+
+#Add the color palette based on customer's balance
+mycolor2 <- mycolor(10)[as.numeric(cut(df$balance,breaks = 10))]
+
+#Plot personal Balance vs Age
+plot(df$age,df$balance, main="Personal Balance vs Age", 
+     xlab="Age", 
+     ylab="Balance", 
+     col = mycolor2,
+     pch = 20)
+```
+
+This scatterplot shows the distribution of personal balance and ages. An interesting point, is that the higest balance is a person older than 80 years, which is an outlier in this dataset.
+
+
+
+#### Dataset source:
+[Moro et al., 2014] S. Moro, P. Cortez and P. Rita. A Data-Driven Approach to Predict the Success of Bank Telemarketing. Decision Support Systems, Elsevier, 62:22-31, June 2014
+
