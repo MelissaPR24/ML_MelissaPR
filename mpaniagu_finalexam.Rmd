@@ -1,0 +1,670 @@
+---
+title: |
+  | \vspace{4cm} \LARGE{CRISA Asian Market Research Agency}
+  \LARGE{IMRB Consumers Segmentation}
+subtitle: |
+    Melissa Paniagua
+author:
+  - MIS64060:Fundamentals of Machine Learning
+  - Professor Murali Shanker
+  - Kent State University
+abstract: | 
+ The objective of this final exam is to apply the appropriate machine learning technique to the business problem, and then present the solution to top-level management.
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: pdf_document
+header-includes: 
+  - \renewcommand{\and}{\\}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\newpage 
+\tableofcontents 
+\newpage 
+
+## I. Introduction 
+
+CRISA is an Asian market research agency that specializes in tracking consumer purchase behavior in consumer goods (both durable and nondurable). In one major research project, CRISA tracks numerous consumer product categories (e.g., “detergents”), and, within each category, perhaps dozens of brands. 
+
+To track purchase behavior, CRISA constituted household panels in over 100 cities and towns in India, covering most of the Indian urban market. The households were carefully selected using stratified sampling to ensure a representative sample; a subset of 600 records is analyzed here, as well as 46 selected variables. The strata were defined based on socioeconomic status and the market (a collection of cities).
+
+Nevertheless, it is essential to considere the following assumption of the BathSoap dataset.
+
++ AGE: Is defined as categories from 1 to 4. 1 refers to a group of age less than 15 years old. 2 has ages from 15 to 35. The 3th group has ages from 35 to 50, and the 4th group has over 50 years old.
+
+CRISA has two categories of clients: 
+
++ Advertising agencies that subscribe to the database services, obtain updated data every month, and use the data to advise their clients on advertising and promotion strategies.
+
++ Consumer goods manufacturers, which monitor their market share using the CRISA database.
+
+Traditionally, CRISA has selected its segment market based on demographic information. Nevertheless, in this scenario, this agency wants to select its segmentation based on purchase behavior and basis of purchase. 
+
+In the following sections, we will implement an unsupervised learning algorithm, K-means clustering, to select form groups based on their similarities. As CRISA requires, wi will use purchase behavior and basis of purchase.
+
+
+\newpage
+
+## II. Data Exploration
+
+```{r, comment=NA, message=FALSE, echo=FALSE}
+# Load libraries needed
+library(readr)
+library(factoextra)
+library(psych)
+library(corrplot)
+library(RColorBrewer)
+library(ggpubr)
+library(dplyr)
+library(caret)
+library(FNN)
+library("gmodels")
+
+# Load the dataset
+BathSoap <- read_csv("BathSoap.csv")
+
+```
+
+The Bath Soap dataset has 600 observations and 46 variables, as shown below. By performing the "str" function, we can determine that most variables are numeric. However, some percentage variables are classified as a character due to the percent (%) sign. In the next section, I will give a solution to solve this matter.
+
+```{r, comment=NA}
+# To get the total number of rows and columns
+dim(BathSoap)
+```
+
+```{r, comment=NA, echo=FALSE}
+# See the data frame structure
+# str(BathSoap)
+```
+
+Additionally, this dataset has many categorical variables that its data type is numeric. For instance: age is a categorical variable where customers' age was grouped into categories. The same analogy happens with socioeconomic groups, eating habits, until the CS variable, which refers to television availability. Therefore, it is essential to take into consideration that even though these variables are numeric, their main goal is to represent a category. 
+
+```{r, comment=NA, echo=FALSE}
+# To get descriptive statistics
+#summary(BathSoap)
+```
+
+After analyzing the descriptive statistics shown above and reviewing the description of categorical variables, we can see that the dataset has missing values infiltrated as zeros. Let's see how many zeros each categorical variable has: 
+
+Note: socioeconomic level, age, and the number of children were removed because these variables do not have missing data. 
+
+```{r, comment=NA}
+# Count the 0's on each variable 
+table(BathSoap$FEH)
+table(BathSoap$MT)
+table(BathSoap$SEX)
+table(BathSoap$EDU)
+table(BathSoap$HS)
+table(BathSoap$CS)
+```
+
+Even though there are some missing values (0's) on almost every categorical variable, I decided not to remove these observations. For our purposes, I will consider them as another category in the data frame. 
+
+If we decide to remove the missing values (0's) we could lose 105 observations, but the main reason is that it is not a wise decision in terms of trade-off. For example, the observations that have missing values have the same 6 variables missed, but the other variables have data, which could be valuable to the analysis. Additionally, the k-means model will not include the categorical data to run the models. It will not be harmful to conserve the zeros, and it will add relevant data (**more data points**) in the purchase behavior and based on purchase for the data analysis.
+
+Now, let's see some visuals to have a better understanding of the data.
+
+```{r comment=NA, figures-side5, fig.show="hold", out.width="50%", echo=FALSE}
+# PLot the variables to see their frecuency
+barplot(table(BathSoap$SEC),
+        main= "Bar Chart of Eating Habits",
+        col= c("darkblue"))
+
+barplot(table(BathSoap$FEH),
+        main= "Bar Chart of Eating Habits",
+        col= c("darkred"))
+
+barplot(table(BathSoap$SEX),
+        main= "Bar Chart of Sex",
+        col= c("#69b3a2"))
+
+barplot(table(BathSoap$AGE),
+        main= "Bar Chart of Age Group",
+        col= c("turquoise"))
+
+barplot(table(BathSoap$EDU),
+        main= "Bar Chart of Education Level",
+        col= c("purple"))
+
+barplot(table(BathSoap$CHILD),
+        main= "Category of Presence of Children",
+        col= c("darkgreen"))
+```
+
+From these plots, we can see the following:
+
++ As mentioned in the introduction, the dataset was defined based on socioeconomic status and the market (a collection of cities), and we can confirm it in the first graph.
+
++ 85.16% of the data points are female.
+
++ More than 250 of the customers are in the age group 4, which based on our assumptions, their age is over 50 years old.
+
++ Most of the customer's education level in the classification of 4 and 5. Remember that 1 means minimum education and 9 is the maximum. 
+
+## III. Data Preparation
+
+As we saw in the previous section, it is essential to change the data type of the last 16 variables from character to numeric by removing the % sign. 
+
+The following output shows the new dataset in which all variables are numeric now. Additionally, it is important to clarify that the categorical variables (the first nine variables) saved as a numeric number, will not be changed to "as.factor" because these variables will not be included in the K-means models we will perform. 
+
+```{r comment=NA, echo=FALSE}
+# Change categorical variables from character to numeric
+BathSoap1 <- data.frame(lapply(BathSoap, function(x) as.numeric(sub("%", "", x))))
+
+# To make the last 27 columns in percent
+BathSoap2 <- BathSoap1[,20:46]/100
+
+# To remove the variables that we already changed to percentage
+BathSoap3 <- BathSoap1[, -c(20:46)]
+
+# Merge the variables
+BathSoap4 <- cbind(BathSoap3, BathSoap2)
+
+# To make sure all variables are numeric
+str(BathSoap4)
+```
+Here we can see that the variables were changed. 
+
+Additionally, it is essential to determine the measure of brand loyalty. 
+
+To better handle the percentages of volume purchased of the brand, which will be used as a measure of brand loyalty, we will add another column at the end of the data frame to classify if a customer is loyal or not. It will be based on the column named "Others.999." If the customer has values in "Others.999" greater than 50%, we will classify the customer as "0" meaning the customer is NOT loyal to any brand. If the customer, on the other hand, has an "Others.999" value lower than 50%, the function will assign "1" affirming its loyalty to a brand.
+
+```{r comment=NA}
+# Create loyalty vector based on some loyalty variables
+BathSoap4$Loyalty = 1*(BathSoap4$Others.999<0.5)
+
+# Show the last columns to see Loyalty column
+head(BathSoap4[41:47])
+
+# Summary of loyalty
+table(BathSoap4$Loyalty)
+```
+
+The previous summary shows that 318 customers are not loyal to any brand, and 282 customers are loyal.
+
+For our purposes, we will select three different datasets to run the K-means models based on:
+
++ BathSoap Purchase Behavior
+
++ BathSoap Basis Purchase
+
++ BathSoap both
+
+```{r comment=NA, echo=FALSE}
+# Select the subsets 
+BathSoap_Purchase_Behavior <- BathSoap4[, c(12:22,47)]
+BathSoap_Basis_Purchase <- BathSoap4[, c(32:46)]
+BathSoap_both <- BathSoap4[, c(12:22,32:47)]
+```
+
+Normalization is an essential step in the data preparation. It will allow the dataset to have the same scale, and it will help to reduce the bias and its spread. 
+
+```{r comment=NA, echo=FALSE}
+# Normalize the data using the scale function (z-score)
+BathSoap_Purchase_Behavior <- scale(BathSoap_Purchase_Behavior)
+BathSoap_Basis_Purchase <- scale(BathSoap_Basis_Purchase)
+BathSoap_both <- scale(BathSoap_both)
+```
+
+The following output shows the first 6 rows and the first 6 variables of the select three different datasets: BathSoap Purchase Behavior, BathSoap Basis Purchase, and BathSoap both together.
+
+```{r comment=NA}
+#To see the first 6 rows and the first 6 variables
+head(BathSoap_Purchase_Behavior)[1:6, 1:5]
+head(BathSoap_Basis_Purchase)[1:6, 1:6]
+head(BathSoap_both)[1:6, 1:5]
+```
+
+Now, we computed the distance using the euclidean distance, and the following are the 6 first observations of those data frames.
+
+```{r comment=NA, echo=FALSE}
+# Computing the distance. Euclidean distance calculated by default
+distance_pur_beh <- get_dist(BathSoap_Purchase_Behavior)
+distance_bas_pur <- get_dist(BathSoap_Basis_Purchase)
+distance_both <- get_dist(BathSoap_both)
+```
+
+```{r comment=NA, echo=FALSE}
+#To see the first 6 rows
+#head(distance_pur_beh)
+#head(distance_bas_pur)
+#head(distance_both)
+```
+
+```{r comment=NA, figures-side4, fig.show="hold", out.width="50%", echo=FALSE}
+# Let's visualize our distances. The fviz_dist() function visualizes a distance matrix
+fviz_dist((distance_pur_beh), show_labels = FALSE)+
+  labs(title = "Purchase Behavior")
+
+fviz_dist((distance_bas_pur), show_labels = FALSE)+
+  labs(title = "Basis of Purchase")
+
+fviz_dist((distance_both), show_labels = FALSE)+
+  labs(title = "Both Dataset")
+
+```
+
+This graph is a distance matrix. As we can see, the diagonal values are zeros (pink line) because it is showing the distance between any point against itself. The purple section represents the furthest distance between any pair of observations. For instance, on the Basis of Purchase visual, we can see that there are concentrated pink areas, which means those data points are very close. On the other hand, we can also see that there are strong purple lines that indicate there is a big distance between those observations.
+
+In the following section, we will run K-means model utilizing three different datasets.
+
+# Question 1
+
+1. Use k-means clustering to identify clusters of households based on:
+
++ BathSoap Purchase Behavior
+
++ BathSoap Basis Purchase
+
++ BathSoap both
+
+## IV.I K-means Model based on Purchase Behavior
+
+Before running the K-means model, it is necessary to run heuristic methods that help to identify the "best" k, which is the number of clusters that the model should group the data points.
+
+### Choosing optimal k: Elbow Method & Silhouette Method
+
+```{r comment=NA, figures-side, fig.show="hold", out.width="50%", echo=FALSE}
+# Visualizing the Elbow Method
+fviz_nbclust(BathSoap_Purchase_Behavior, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) + # add line.
+  labs(subtitle = "Elbow Method") # add the subtitle
+
+# Visualizing the Silhouette Method
+fviz_nbclust(BathSoap_Purchase_Behavior, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette Method") # add the subtitle
+```
+Due to the nature of these methods compute the distance, it is common to receive different ks. Domain knowledge is the best way of determining the number of clusters, but for our purposes, utilizing K=2 proposed by the Silhouette Method is a good option to run the K-means model.
+
+### Run K-means Model
+
+```{r comment=NA}
+set.seed(123)
+# To run the kmeans model
+kmeans_pur_beh <- kmeans(BathSoap_Purchase_Behavior, centers = 2, nstart = 30)
+
+# To see the results
+print(kmeans_pur_beh)
+
+# Run table function to identify to which cluster those sizes belong
+table(kmeans_pur_beh$cluster)
+```
+
+This output shows 2 clusters of sizes 268, 332. We also see the clusters means of each variable based on each cluster, and how each data point is assigned. For example the first row was assigned to cluster 2, and so on. The last table determines the 268 data points belong to cluster 1, and 332 to cluster 2.
+
+### Visualize
+
+```{r comment=NA, fig.align = 'center', out.width="80%", echo=FALSE}
+# To visualize the output
+fviz_cluster(kmeans_pur_beh, data = BathSoap_Purchase_Behavior) +
+  labs(title = "Purchase Behavior")
+```
+
+
+## IV.II K-means Model based on Basis for Purchase
+
+Basis for Purchase includes data based on the percent of volume purchased under the price category, and the percent of volume purchased under the product proposition category.
+
+### Choosing optimal k: Elbow Method & Silhouette Method
+
+```{r comment=NA, figures-side1, fig.show="hold", out.width="50%", echo=FALSE}
+# Visualizing the Elbow Method
+fviz_nbclust(BathSoap_Basis_Purchase, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) + # add line.
+  labs(subtitle = "Elbow Method") # add the subtitle
+
+# Visualizing the Silhouette Method
+fviz_nbclust(BathSoap_Basis_Purchase, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette Method") # add the subtitle
+```
+
+Based on Basis for Purchase, we will use k=3 given by the Elbow Method because the marketing efforts would support two to five different promotional approaches, and nine exceeds this projection.
+
+### Run K-means Model
+
+```{r comment=NA}
+set.seed(123)
+# To run the kmeans model
+kmeans_bas_pur <- kmeans(BathSoap_Basis_Purchase, centers = 3, nstart = 30)
+
+# To see the results
+print(kmeans_bas_pur)
+
+# Let's run table function to identify to which cluster those sizes belong
+table(kmeans_bas_pur$cluster)
+```
+
+The output of Basis of purchase model shows 3 clusters of sizes 376, 79, and 145. It gives the clusters mean of each variable based on each cluster, and clustering vector. 
+
+In the following table we can see that cluster 1 has 376, cluster 2: 79, and cluster 3: 145.
+
+### Visualize
+
+```{r comment=NA, fig.align = 'center', out.width="80%", echo=FALSE}
+# To visualize the output
+fviz_cluster(kmeans_bas_pur, data = BathSoap_Basis_Purchase) +
+  labs(title = "Basis of Purchase") 
+```
+
+
+## IV.III K-means Model based on both: Purchase Behavior & Basis for Purchase
+
+Here, we will combine both subsets (Purchase Behavior and Basis for Purchase), and we will run the K-means to see how the model forms the groups by providing more data points 
+
+### Choosing optimal k: Elbow Method & Silhouette Method
+
+```{r comment=NA, figures-side2, fig.show="hold", out.width="50%", echo=FALSE}
+# Visualizing the Elbow Method
+fviz_nbclust(BathSoap_both, kmeans, method = "wss") +
+  geom_vline(xintercept = 3, linetype = 2) + # add line.
+  labs(subtitle = "Elbow Method") # add the subtitle
+
+# Visualizing the Silhouette Method
+fviz_nbclust(BathSoap_both, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette Method") # add the subtitle
+```
+
+Like the previous section, we will select k=3 like the Elbow method recommends due to the like number of the Silhouette method provides. 
+
+### Run K-means Model
+
+```{r comment=NA}
+set.seed(123)
+# To run the kmeans model
+kmeans_both <- kmeans(BathSoap_both, centers = 3, nstart = 30)
+
+# To see the results
+print(kmeans_both)
+
+# Let's run table function to identify to which cluster those sizes belong
+table(kmeans_both$cluster)
+```
+
+In this case, the models groups the data as follows: cluster 1: 71, cluster 2: 323, and cluster 3: 206.
+
+### Visualize
+
+```{r comment=NA, fig.align = 'center', out.width="80%", echo=FALSE}
+# To visualize the output
+fviz_cluster(kmeans_both, data = BathSoap_both) +
+  labs(title = "Purchase Behavior + Basis of Purchase")  
+```
+
+\newpage
+
+# Question 2
+
+2. Select what you think is the best segmentation and comment on the characteristics (demographic, brand loyalty, and basis for purchase) of these clusters. (This information would be used to guide the development of advertising and promotional campaigns.)
+
+Based on the results of the previous section, in my opinion, the model that best segments the customers is the K-means model based on Basis of Purchase. I believe that model formed the groups utilizing only the basis of the purchase dataset.
+
+In order to analyze the demographic, brand loyalty, and basis for purchase characteristics of these clusters, we will add the number of the cluster the observation belongs to using the unnormalized data frame. We will use unnormalized data because it is more meaningful and easier to compare. Here is an example of the dataset with the new cluster column:
+
+```{r comment=NA, echo=FALSE}
+# Create a new df using not normalized data, and add a cluster column.
+BathSoap5 <- data.frame(BathSoap4, cluster = kmeans_bas_pur$cluster)
+
+# To show the first 6 rows and last 5 columns
+BathSoap5[1:6, 43:48]
+```
+
+Now, let's see some plot to get more insights.
+
+```{r comment=NA, fig.show="hold", out.width="50%", echo=FALSE, message=FALSE}
+# Loyalty vs Gender
+counts <- table(BathSoap5$SEX, BathSoap5$Loyalty)
+barplot(counts, main="Loyalty based on Gender",
+        xlab="Loyalty", 
+        col=c("#D1E5F0", "darkblue", "#336699"),
+        legend = rownames(counts), beside=TRUE, args.legend = list(x=ncol(counts)+7))
+
+# Gender vs cluster
+counts <- table(BathSoap5$SEX, BathSoap5$cluster)
+barplot(counts, main="Cluster based on Gender",
+        xlab="Cluster", 
+        col=c("#D1E5F0", "darkblue", "#336699"),
+        legend = rownames(counts), beside=TRUE)
+```
+
+As we saw in the data exploration section, 85.16% of the data points are female. Based on these plots, we can determine that gender does not influence the level of loyalty. Additionally, if we compare the "Loyalty based on Gender" chart VS the "Cluster-based on Gender," there is not much of a difference. Both behave the same! 
+
+The following ourput shows the relationship between the socioeconomic class based on loyalty. Remember that in our dataset 1 refers to people in a high class, and 4 is the lower class.
+
+```{r comment=NA,  fig.align = 'center', out.width="60%", echo=FALSE, message=FALSE}
+counts <- table(BathSoap5$SEC, BathSoap5$Loyalty)
+barplot(counts, main="Socioeconomic Class based on Loyalty",
+        xlab="Loyalty", 
+        col=c("turquoise", "darkgreen", "lightblue", "darkblue"),
+        legend = rownames(counts), beside=TRUE, args.legend = list(x=ncol(counts)+9))
+```
+
+Based on this chart, we can determine that people with a high socioeconomic class (more income) tend to be less loyal to a brand, and people with less income tend to be more loyal to a brand. It might be because there could be a correlation between income and the freedom to select the best products in the market. Nevertheless, correlation does not mean causation. It is something that the market team could take into account when developing advertising and promotional campaigns.
+
+The following charts show the average of transactions per brand run by TV Availability, Loyalty, and Socioeconomic Class.
+
+```{r comment=NA, fig.show="hold", out.width="50%", echo=FALSE, message=FALSE}
+# Box plot of Trans...Brand.Runs on each cluster by CS
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Trans...Brand.Runs, 
+                             fill=as.factor(CS))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Trans.Brand.Runs based on TV Availability by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 18))
+
+# Box plot of Trans...Brand.Runs on each cluster by Loyalty
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Trans...Brand.Runs, 
+                             fill=as.factor(Loyalty))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Trans.Brand.Runs based on Loyalty by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 18))
+
+# Box plot of Trans...Brand.Runs on each cluster by SEC
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Trans...Brand.Runs, 
+                             fill=as.factor(SEC))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Trans.Brand based on Socioeconomic Class by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 17))
+
+# Box plot of Trans...Brand.Runs on each cluster by AGE
+#ggplot(BathSoap5, aes(x=as.factor(cluster), y=Trans...Brand.Runs, 
+#                             fill=as.factor(AGE))) + geom_boxplot() +
+#                         facet_wrap(~as.factor(cluster), scale="free_x") +
+#                         ggtitle("Trans.Brand.Runs based on Age by Cluster") +
+#                         theme(axis.text=element_text(size=15),
+#                         axis.title=element_text(size=15), 
+#                         plot.title = element_text(size = 18))
+```
+
+Here we can see that:
+
++ Cluster 1 and 3 tend to behave similarly. 
+
++ Cluster 2: This is the most loyal cluster found on the average of transactions per brand run. It also has the highest range of socioeconomic class but based on TV availability, many data points do not have television availability. Nevertheless, its median has a similar level compared to other clusters. In conclusion, cluster 2 seems to perform more transactions per brand compared to other clusters.
+
+Lastly, here we can see the average price of purchase by TV Availability, Loyalty, and Socioeconomic Class.
+
+```{r comment=NA, fig.show="hold", out.width="50%", echo=FALSE, message=FALSE}
+# Box plot of Avg..Price on each cluster by CS
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Avg..Price, 
+                             fill=as.factor(CS))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Avg.Price based on TV Availability by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 18))
+
+# Box plot of Avg..Price on each cluster by Loyalty
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Avg..Price, 
+                             fill=as.factor(Loyalty))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Avg.Price based on Loyalty by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 18))
+
+# Box plot of Avg..Price on each cluster by SEC
+ggplot(BathSoap5, aes(x=as.factor(cluster), y=Avg..Price, 
+                             fill=as.factor(SEC))) + geom_boxplot() +
+                         facet_wrap(~as.factor(cluster), scale="free_x") +
+                         ggtitle("Avg.Price based on Socioeconomic Class by Cluster") +
+                         theme(axis.text=element_text(size=15),
+                         axis.title=element_text(size=15), 
+                         plot.title = element_text(size = 18))
+
+# Box plot of Avg..Price on each cluster by AGE
+#ggplot(BathSoap5, aes(x=as.factor(cluster), y=Avg..Price, 
+#                             fill=as.factor(AGE))) + geom_boxplot() +
+#                         facet_wrap(~as.factor(cluster), scale="free_x") +
+#                         ggtitle("Avg.Price based on Age by Cluster") +
+#                         theme(axis.text=element_text(size=15),
+#                         axis.title=element_text(size=15), 
+#                         plot.title = element_text(size = 18))
+```
+
+From these visuals, we can determine that:
+
++ Cluster 3 is the outstanding cluster out of the 3. Based on the average price of the purchase, this cluster spends more money on average acquirements. It is the most loyal cluster even though it spends more on average purchases. 
+
++ Cluster 2 seems to have the lowest scores stand on the average price of purchase. 
+
++ Cluster 1: It behaves uniformly across the box plots.
+
+In summary, cluster 3 seems to spend more money on their purchases.
+
+\newpage
+
+# Question 3
+
+3. Develop a model that classifies the data into these segments. Since this information would most likely be used in targeting direct-mail promotions, it would be useful to select a market segment that would be defined as a success in the classification model.
+
+
+In this section, we will run a KNN classification model to determine how well the model will classify its customers to determine if the promotion will succeed or fail based on different characteristics. In order to determine that and based on the previous section, we will use cluster 3, which spends on average more money on their purchases to develop the model.
+
+```{r comment=NA, echo=FALSE}
+## Data Splitting
+
+set.seed(1234)
+#Select subset and remove demographic information
+mydf <- select(BathSoap5, 12:22, 32:48)
+
+# Create a column called Classification and classify cluster 3 as success 1, and the remaning as failure.
+# Create a new df using not normalized data, and add a success column.
+mydf$success = ifelse(mydf$cluster == 3,1,0)
+
+# To create a partition of 60% of our data set, we will use a caret package tool
+resample = createDataPartition(mydf$Avg..Price, p=0.60, list=FALSE)
+
+# Now, let's to create a dataframe with 60% for training sets and 40% validation sets.
+train_set = mydf[resample, ]
+valid_set = mydf[-resample, ]
+
+#Now, let's do summary function to get some descritive statistics for only income 
+# on our training and validation set.
+#summary(train_set$Avg..Price)
+#summary(valid_set$Avg..Price)
+
+# Normalize 
+# Copy the original data and create new normalized dataframes
+train_norm_set <- train_set
+valid_norm_set <- valid_set
+
+# use preProcess() from the caret package to normalize the all the variables in our dataset.
+norm_set <- preProcess(train_set[, 1:26], method=c("center", "scale"))
+
+# Replace the columns with normalized values
+train_norm_set[, 1:26] <- predict(norm_set, train_set[, 1:26]) 
+valid_norm_set[, 1:26] <- predict(norm_set, valid_set[, 1:26])
+```
+
+
+```{r comment=NA, echo=FALSE}
+#First, create X dataframe and Y vector
+train_predictors<-train_norm_set[,1:28, drop = TRUE] 
+valid_predictors<-valid_norm_set[,1:28, drop = TRUE]
+
+# Let's remove the predicted variable 
+train_labels <-train_norm_set[,29, drop = TRUE] 
+valid_labels  <-valid_norm_set[,29, drop = TRUE] 
+
+## Determing the optimal using Hyperparameter Tuning for Test Set
+#Let's find the optimal k using tuning parameters
+
+set.seed(1234)
+Search_grid <- expand.grid(k=c(1:10))
+train_predict_labels <- train_predictors
+train_predict_labels$success = train_labels
+modeltest<-train(factor(success)~ . , 
+                 data = train_predict_labels, method="knn",
+                 tuneGrid=Search_grid,
+                 preProcess='range')
+
+# To show the result
+modeltest
+
+```
+
+After performing some data preparation and by performing the grid search, we can see that the optimal k is 1.
+
+Now, we will develop the KNN classification model to determine the level of success and failure of the marketing campaign based on the purchase.
+
+```{r comment=NA}
+#Run the model using k = 2
+set.seed(1234)
+my_knn <-knn(train_predictors, 
+                            valid_predictors, 
+                            cl=train_labels, 
+                            k=1 )
+
+# See the 6 first values of predicted class in the validation set
+head(my_knn)
+
+# To summarized the model
+summary(my_knn)
+```
+
+This output shows the summary of KNN model. Here we can see the levels of the model, and ny seing the summary we can identify that 60 customers are classified as success and 179 as failure.
+
+Now, let's see the models performance analyzing the confusion matrix.
+
+```{r comment=NA, echo=FALSE}
+# Create a confusion matrix
+conf_matrix <- CrossTable(x=valid_labels,y=my_knn, prop.chisq = FALSE)
+
+#Calcutale the accuracy
+accuracy <- (conf_matrix$t[2,2] + conf_matrix$t[1,1])/ sum(conf_matrix$t)
+
+#Calcutale the recall
+recall <- conf_matrix$t[2,2]/ (conf_matrix$t[2,2] + conf_matrix$t[2,1]) 
+
+#Calcutale the precision
+precision <- conf_matrix$t[2,2]/ (conf_matrix$t[2,2] + conf_matrix$t[1,2]) 
+
+#Calcutale the specificity
+specificity <- conf_matrix$t[1,1]/ (conf_matrix$t[1,1] + conf_matrix$t[1,2]) 
+```
+
+```{r comment=NA}
+print(accuracy)
+print(recall)
+print(precision)
+print(specificity)
+```
+
+It proves the KNN classification model did an excellent good job to classify the customer to target for a direct-mail promotions.
+
+## VII. Conclusions
+
+In previous years, CRISA has traditionally segmented its market based on demographic characteristics. In order to help to improve it is market segmentation in India, we developed three K-means clustering models based on the following characteristics: Purchase Behavior, Basis of Purchase, and combining both characteristics (Purchase Behavior + Basis of Purchase). 
+
+After analyzing those results, we determined that market the segmentation based on Basis of Purchase is the most effective strategy to follow. We saw that the K-means clustering model worked very well, and it will help CRISA’s clients, IMRB, to target its marketing promotions more efficiently, save time and money, and provide accurate rewards to the clients that are loyal to IMRB. 
+
+Additionally, by developing the supervised classification model, KNN, the IMRB can target mail promotions with high accuracy and IMRB could implement a successful marketing campaign to enhance its business revenue.
+
+
